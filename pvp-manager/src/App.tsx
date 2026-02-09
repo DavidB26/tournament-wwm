@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import "./App.css"
 
 type Role = "TANK" | "HEALER" | "DPS";
 type DpsType = "MELEE" | "RANGED";
@@ -110,6 +111,32 @@ function loadState(): { players: Player[]; results: MatchResult[]; queue: string
 
 function saveState(players: Player[], results: MatchResult[], queue: string[]) {
   localStorage.setItem(LS_KEY, JSON.stringify({ players, results, queue }));
+}
+
+function downloadTextFile(filename: string, content: string, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(v: unknown) {
+  const s = String(v ?? "");
+  // Quote if it contains comma, quote or newline
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function formatDateTime(ts: number) {
+  const d = new Date(ts);
+  // ISO-ish but Excel friendly
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function recentlyPlayed(p: Player, oppId: string, recentCount: number) {
@@ -430,42 +457,43 @@ export default function App() {
     setCurrentMatch(null);
   }
 
-  function copyMatchToClipboard() {
-    if (!matchA || !matchB) return;
 
-    const fmt = (p: Player) => {
-      const dps = p.role === "DPS"
-        ? ` (${p.dpsType === "RANGED" ? "DPS Distancia" : "DPS Melee"} - ${p.weapon1} + ${p.weapon2})`
-        : "";
-      return `${p.nick} [${p.role}${dps}]`;
-    };
 
-    const text = `⚔️ PvP 1v1: ${fmt(matchA)} vs ${fmt(matchB)}`;
-    navigator.clipboard.writeText(text).catch(() => {});
-    alert("Match copiado ✅ (pégalo en Discord)");
+
+  function exportPlayersCSV() {
+    const header = [
+      "nick",
+      "active",
+      "role",
+      "dps_type",
+      "weapon1",
+      "weapon2",
+      "level",
+      "wins",
+      "losses",
+      "last_played_at",
+    ];
+
+    const rows = players.map((p) => {
+      return [
+        p.nick,
+        p.active ? "1" : "0",
+        p.role,
+        p.role === "DPS" ? (p.dpsType ?? "") : "",
+        p.role === "DPS" ? p.weapon1 : "",
+        p.role === "DPS" ? p.weapon2 : "",
+        p.level,
+        p.wins,
+        p.losses,
+        p.lastPlayedAt ? formatDateTime(p.lastPlayedAt) : "",
+      ].map(csvEscape).join(",");
+    });
+
+    const csv = [header.join(","), ...rows].join("\r\n");
+    const filename = `pvp_jugadores_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadTextFile(filename, csv, "text/csv;charset=utf-8");
   }
 
-  function exportJSON() {
-    const payload = JSON.stringify({ players, results, queue }, null, 2);
-    navigator.clipboard.writeText(payload).catch(() => {});
-    alert("Export copiado al portapapeles ✅");
-  }
-
-  function importJSON() {
-    const raw = prompt("Pega aquí el JSON exportado:");
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      const newPlayers: Player[] = Array.isArray(parsed.players) ? parsed.players : [];
-      const newResults: MatchResult[] = Array.isArray(parsed.results) ? parsed.results : [];
-      const newQueue: string[] = Array.isArray(parsed.queue) ? parsed.queue : newPlayers.map(p => p.id);
-      setCurrentMatch(null);
-      setData({ players: newPlayers, results: newResults, queue: newQueue });
-      alert("Importado ✅");
-    } catch {
-      alert("JSON inválido ❌");
-    }
-  }
 
   function resetAll() {
     if (!confirm("¿Reset total? Se borran jugadores, resultados y cola.")) return;
@@ -475,300 +503,7 @@ export default function App() {
 
   return (
     <div className="shinigami-app">
-      <style>{`
-        :root {
-          --bg: #0b0f14;
-          --panel: rgba(16, 22, 30, 0.78);
-          --panel2: rgba(12, 16, 22, 0.92);
-          --text: #e9eef6;
-          --muted: rgba(233, 238, 246, 0.7);
-          --border: rgba(255, 255, 255, 0.10);
-          --border2: rgba(255, 255, 255, 0.16);
-          --shadow: 0 10px 30px rgba(0,0,0,0.45);
 
-          /* Bleach / Shinigami vibe */
-          --reiatsu: #6fb6ff;      /* blue glow */
-          --bankai: #ff0033;       /* verisure red = blood/bankai */
-          --spirit: #a78bfa;       /* purple */
-          --healer: #22c55e;       /* green */
-          --tank: #22d3ee;         /* cyan */
-          --warn: #f59e0b;
-          --danger: #ff6b6b;
-          --radius: 16px;
-          --action: #2dd4bf;       /* teal action for Next Match */
-        }
-
-        .shinigami-app{
-          max-width: 1150px;
-          margin: 0 auto;
-          padding: 18px;
-          font-family: system-ui, -apple-system, Segoe UI, Roboto;
-          color: var(--text);
-        }
-
-        /* App background layer */
-        .shinigami-app::before{
-          content: "";
-          position: fixed;
-          inset: 0;
-          z-index: -2;
-          background:
-            radial-gradient(900px 500px at 12% 8%, rgba(111,182,255,0.18), transparent 60%),
-            radial-gradient(900px 500px at 88% 14%, rgba(255,0,51,0.14), transparent 60%),
-            radial-gradient(900px 500px at 70% 90%, rgba(167,139,250,0.14), transparent 60%),
-            linear-gradient(180deg, #06080c 0%, #0b0f14 35%, #070a0f 100%);
-        }
-
-        .row{
-          display:flex;
-          justify-content:space-between;
-          gap:12px;
-          flex-wrap:wrap;
-          align-items:center;
-        }
-
-        h1{
-          letter-spacing: -0.02em;
-          font-weight: 900;
-          font-size: clamp(28px, 2.5vw, 40px);
-          margin: 0;
-          display:flex;
-          gap:10px;
-          align-items:center;
-        }
-
-        .title-icon{
-          filter: drop-shadow(0 0 10px rgba(111,182,255,0.35));
-        }
-
-        .subline{
-          margin-top: 8px;
-          color: var(--muted);
-          display:flex;
-          gap:10px;
-          align-items:center;
-          flex-wrap:wrap;
-        }
-
-        .badge{
-          display:inline-flex;
-          gap:6px;
-          align-items:center;
-          padding: 4px 10px;
-          border-radius: 999px;
-          border: 1px solid var(--border);
-          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
-          font-size: 12px;
-        }
-
-        .btn{
-          appearance:none;
-          border: 1px solid var(--border2);
-          background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
-          color: var(--text);
-          padding: 10px 14px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: transform .08s ease, box-shadow .15s ease, border-color .15s ease, opacity .15s ease;
-          box-shadow: var(--shadow);
-        }
-        .btn:hover{ border-color: rgba(111,182,255,0.35); box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(111,182,255,0.10); }
-        .btn:active{ transform: translateY(1px); }
-        .btn:disabled{ opacity: .45; cursor:not-allowed; box-shadow: none; }
-
-        .btn.primary{
-          border-color: rgba(255,0,51,0.45);
-          background: linear-gradient(180deg, rgba(255,0,51,0.22), rgba(255,0,51,0.10));
-        }
-        .btn.primary:hover{ box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(255,0,51,0.14); }
-
-        .btn.ghost{
-          border-color: rgba(111,182,255,0.35);
-          background: linear-gradient(180deg, rgba(111,182,255,0.16), rgba(111,182,255,0.06));
-        }
-
-        .btn.danger{
-          border-color: rgba(255,107,107,0.45);
-          background: linear-gradient(180deg, rgba(255,107,107,0.20), rgba(255,107,107,0.08));
-        }
-
-        .btn.action{
-          border-color: rgba(45,212,191,0.55);
-          background: linear-gradient(180deg, rgba(45,212,191,0.20), rgba(45,212,191,0.08));
-        }
-        .btn.action:hover{
-          box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(45,212,191,0.14);
-        }
-
-        .btn.reiatsu{
-          border-color: rgba(111,182,255,0.55);
-          background: linear-gradient(180deg, rgba(111,182,255,0.18), rgba(111,182,255,0.06));
-        }
-        .btn.reiatsu:hover{
-          box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(111,182,255,0.14);
-        }
-        .card-head{
-          display:flex;
-          justify-content:space-between;
-          gap:12px;
-          align-items:center;
-          flex-wrap:wrap;
-          margin-bottom: 8px;
-        }
-
-        select, input{
-          width: 100%;
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid var(--border2);
-          color: var(--text);
-          background: rgba(8, 11, 16, 0.65);
-          outline: none;
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03);
-        }
-        input::placeholder{ color: rgba(233,238,246,0.45); }
-        select:disabled, input:disabled{ opacity: .55; }
-
-        hr{
-          border: none;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(111,182,255,0.20), rgba(255,0,51,0.16), transparent);
-          margin: 18px 0;
-        }
-
-        .card{
-          border: 1px solid var(--border);
-          border-radius: var(--radius);
-          background: linear-gradient(180deg, var(--panel), var(--panel2));
-          box-shadow: var(--shadow);
-          padding: 14px;
-          position: relative;
-          overflow: hidden;
-        }
-        .card::before{
-          content:"";
-          position:absolute;
-          inset:-2px;
-          background: radial-gradient(600px 160px at 15% 0%, rgba(111,182,255,0.16), transparent 55%),
-                      radial-gradient(600px 160px at 85% 0%, rgba(255,0,51,0.12), transparent 55%);
-          z-index: 0;
-          pointer-events: none;
-        }
-        .card > *{ position: relative; z-index: 1; }
-
-        .match-grid{
-          display:grid;
-          grid-template-columns: 1fr 80px 1fr;
-          gap: 12px;
-          align-items: center;
-        }
-
-        .fighter{
-          border: 1px solid rgba(255,255,255,0.10);
-          border-radius: 14px;
-          padding: 12px;
-          background: rgba(0,0,0,0.25);
-        }
-
-        .fighter h3{ margin:0; font-size: 20px; font-weight: 900; }
-        .meta{ margin-top: 8px; color: var(--muted); line-height: 1.5; }
-
-        .pill{
-          display:inline-flex;
-          align-items:center;
-          padding: 2px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.14);
-          background: rgba(255,255,255,0.06);
-          font-size: 12px;
-          margin-right: 6px;
-        }
-        .role-tank{ border-color: rgba(34,211,238,0.45); box-shadow: 0 0 0 2px rgba(34,211,238,0.08) inset; }
-        .role-healer{ border-color: rgba(34,197,94,0.45); box-shadow: 0 0 0 2px rgba(34,197,94,0.08) inset; }
-        .role-dps{ border-color: rgba(255,0,51,0.45); box-shadow: 0 0 0 2px rgba(255,0,51,0.08) inset; }
-
-        .queue-chip{
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(0,0,0,0.22);
-        }
-        .queue-chip--next{
-          border-color: rgba(111,182,255,0.45);
-          box-shadow: 0 0 0 3px rgba(111,182,255,0.10), 0 12px 28px rgba(0,0,0,0.35);
-          background: linear-gradient(180deg, rgba(111,182,255,0.14), rgba(0,0,0,0.18));
-        }
-        .register-grid{
-          display: grid;
-          grid-template-columns: 2fr 0.8fr 1fr 1fr 1fr 0.8fr 0.8fr;
-          gap: 10px;
-        }
-
-        @media (max-width: 980px){
-          .match-grid{ grid-template-columns: 1fr; }
-          .vs{ display:none; }
-        }
-
-        @media (max-width: 820px){
-          .register-grid{
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-
-        table{ width: 100%; border-collapse: collapse; }
-        thead th{
-          color: rgba(233,238,246,0.82);
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: .08em;
-          padding: 10px 8px;
-          border-bottom: 1px solid rgba(255,255,255,0.10);
-        }
-        tbody td{
-          padding: 10px 8px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          color: rgba(233,238,246,0.9);
-        }
-        tbody tr:hover td{ background: rgba(111,182,255,0.04); }
-
-        .toolbar{
-          display:flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .small{
-          font-size: 12px;
-          color: var(--muted);
-        }
-
-        .vs{
-          text-align:center;
-          font-weight: 1000;
-          font-size: 22px;
-          color: rgba(233,238,246,0.92);
-          text-shadow: 0 0 20px rgba(111,182,255,0.22);
-        }
-
-        .range-row{
-          display:flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          align-items:center;
-        }
-
-        input[type="range"]{ width: 140px; accent-color: var(--reiatsu); }
-
-        .section-title{
-          margin: 0 0 10px 0;
-          font-size: 18px;
-          font-weight: 900;
-          display:flex;
-          gap: 10px;
-          align-items:center;
-        }
-      `}</style>
       <header className="row">
         <div>
           <h1><span className="title-icon">⚔️</span> PvP 1v1 Manager </h1>
@@ -784,8 +519,7 @@ export default function App() {
           </div>
         </div>
         <div className="toolbar">
-          <button className="btn reiatsu" onClick={exportJSON}>Export JSON</button>
-          <button className="btn reiatsu" onClick={importJSON}>Import JSON</button>
+          <button className="btn reiatsu" onClick={exportPlayersCSV} disabled={players.length === 0}>Export Jugadores</button>
           <button className="btn danger" onClick={resetAll}>Reset</button>
         </div>
       </header>
@@ -804,7 +538,6 @@ export default function App() {
             <button className="btn action" onClick={nextMatch} disabled={activeCount < 2}>🎲 Siguiente match</button>
             <button className="btn" onClick={resetMatch} disabled={!currentMatch}>Reset match</button>
             <button className="btn " onClick={rebuildQueueFromPlayers}>Rearmar cola</button>
-            <button className="btn" onClick={copyMatchToClipboard} disabled={!currentMatch || !matchA || !matchB}>📋 Copiar match</button>
           </div>
           <div className="range-row" style={{ opacity: 0.9 }}>
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -843,12 +576,7 @@ export default function App() {
 
         {/* Current match */}
         <div className="card">
-          <div className="card-head">
-            <h2 className="section-title">🔥 Match actual</h2>
-            <button className="btn reiatsu" onClick={copyMatchToClipboard} disabled={!currentMatch || !matchA || !matchB}>
-              📋 Copiar match
-            </button>
-          </div>
+        <h2 className="section-title">🔥 Match actual</h2>
           {!currentMatch || !matchA || !matchB ? (
             <div style={{ opacity: 0.75 }}>No hay match aún. Dale a <b>Siguiente match</b>.</div>
           ) : (
@@ -978,7 +706,7 @@ export default function App() {
         {players.length === 0 ? (
           <div style={{ opacity: 0.75 }}>Aún no agregas jugadores.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div  className="table-compact" style={{ overflowX: "auto" }}>
             <table>
               <thead>
                 <tr style={{ textAlign: "left" }}>
@@ -1011,9 +739,9 @@ export default function App() {
                     <td>
                       {p.role === "DPS" ? (p.dpsType === "RANGED" ? "Distancia" : "Melee") : "—"}
                     </td>
-                    <td>{p.role === "DPS" ? `${p.weapon1} + ${p.weapon2}` : "—"}</td>
+                    <td className="cell-weapons">{p.role === "DPS" ? `${p.weapon1} + ${p.weapon2}` : "—"}</td>
                     <td>{p.wins}-{p.losses}</td>
-                    <td style={{ opacity: 0.85 }}>
+                    <td  className="cell-opponents" style={{ opacity: 0.85 }}>
                       {p.lastOpponents.length
                         ? p.lastOpponents
                             .slice(0, 5)
@@ -1023,8 +751,8 @@ export default function App() {
                         : "—"}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <button className="btn danger" onClick={() => removePlayer(p.id)}>
-                        Eliminar
+                      <button className="btn danger btn-xs"  title="Eliminar" onClick={() => removePlayer(p.id)}>
+                        X
                       </button>
                     </td>
                   </tr>
