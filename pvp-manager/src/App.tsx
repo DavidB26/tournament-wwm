@@ -24,7 +24,8 @@ type Player = {
   nick: string;
   role: Role;
   dpsType: DpsType | null; // solo DPS
-  weapon: Weapon;          // solo DPS
+  weapon1: Weapon;         // solo DPS
+  weapon2: Weapon;         // solo DPS  
   level: Level;            // solo informativo
 
   active: boolean;
@@ -66,8 +67,39 @@ function loadState(): { players: Player[]; results: MatchResult[]; queue: string
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return { players: [], results: [], queue: [] };
     const parsed = JSON.parse(raw);
+
+    const migratedPlayers: Player[] = Array.isArray(parsed.players)
+      ? parsed.players.map((p: any) => {
+          // Already migrated
+          if (p && ("weapon1" in p || "weapon2" in p)) {
+            return {
+              ...p,
+              weapon1: p.weapon1 ?? p.weapon ?? "—",
+              weapon2: p.weapon2 ?? p.weapon ?? "—",
+            } as Player;
+          }
+
+          // Legacy format: single weapon
+          if (p && ("weapon" in p)) {
+            const w = p.weapon ?? "—";
+            return {
+              ...p,
+              weapon1: w,
+              weapon2: w,
+            } as Player;
+          }
+
+          // Fallback
+          return {
+            ...p,
+            weapon1: p?.weapon1 ?? "—",
+            weapon2: p?.weapon2 ?? "—",
+          } as Player;
+        })
+      : [];
+
     return {
-      players: Array.isArray(parsed.players) ? parsed.players : [],
+      players: migratedPlayers,
       results: Array.isArray(parsed.results) ? parsed.results : [],
       queue: Array.isArray(parsed.queue) ? parsed.queue : [],
     };
@@ -101,8 +133,17 @@ function dpsVarietyScore(a: Player, b: Player) {
 
 function weaponVarietyScore(a: Player, b: Player) {
   if (a.role !== "DPS" || b.role !== "DPS") return 0;
-  if (!a.weapon || !b.weapon) return 0;
-  if (a.weapon !== b.weapon) return 2;
+
+  const aSet = new Set([a.weapon1, a.weapon2].filter(Boolean));
+  const bSet = new Set([b.weapon1, b.weapon2].filter(Boolean));
+
+  let diff = 0;
+  for (const w of aSet) if (!bSet.has(w)) diff++;
+  for (const w of bSet) if (!aSet.has(w)) diff++;
+
+  if (diff >= 3) return 3;
+  if (diff === 2) return 2;
+  if (diff === 1) return 1;
   return 0;
 }
 
@@ -196,7 +237,8 @@ export default function App() {
   const [nick, setNick] = useState("");
   const [role, setRole] = useState<Role>("DPS");
   const [dpsType, setDpsType] = useState<DpsType>("MELEE");
-  const [weapon, setWeapon] = useState<Weapon>("Espada estratégica");
+  const [weapon1, setWeapon1] = useState<Weapon>("Espada estratégica");
+  const [weapon2, setWeapon2] = useState<Weapon>("Espada estratégica");
   const [level, setLevel] = useState<Level>("MEDIO");
 
   useEffect(() => {
@@ -210,6 +252,15 @@ export default function App() {
   }, [players]);
 
   const activeCount = useMemo(() => players.filter(p => p.active).length, [players]);
+  const stats = useMemo(() => {
+    const active = players.filter(p => p.active);
+    const tank = active.filter(p => p.role === "TANK").length;
+    const healer = active.filter(p => p.role === "HEALER").length;
+    const dps = active.filter(p => p.role === "DPS").length;
+    const melee = active.filter(p => p.role === "DPS" && p.dpsType === "MELEE").length;
+    const ranged = active.filter(p => p.role === "DPS" && p.dpsType === "RANGED").length;
+    return { tank, healer, dps, melee, ranged };
+  }, [players]);
 
   const matchA = currentMatch ? playersById.get(currentMatch.aId) : null;
   const matchB = currentMatch ? playersById.get(currentMatch.bId) : null;
@@ -218,12 +269,15 @@ export default function App() {
   useEffect(() => {
     if (role === "DPS") {
       if (dpsType === "RANGED") {
-        if (!DPS_RANGED_WEAPONS.includes(weapon as any)) setWeapon("Sombrilla");
+        if (!DPS_RANGED_WEAPONS.includes(weapon1 as any)) setWeapon1("Sombrilla");
+        if (!DPS_RANGED_WEAPONS.includes(weapon2 as any)) setWeapon2("Sombrilla");
       } else {
-        if (!DPS_MELEE_WEAPONS.includes(weapon as any)) setWeapon("Espada estratégica");
+        if (!DPS_MELEE_WEAPONS.includes(weapon1 as any)) setWeapon1("Espada estratégica");
+        if (!DPS_MELEE_WEAPONS.includes(weapon2 as any)) setWeapon2("Espada estratégica");
       }
     } else {
-      setWeapon("—");
+      setWeapon1("—");
+      setWeapon2("—");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [role]);
@@ -231,9 +285,11 @@ export default function App() {
   useEffect(() => {
     if (role !== "DPS") return;
     if (dpsType === "RANGED") {
-      if (!DPS_RANGED_WEAPONS.includes(weapon as any)) setWeapon("Sombrilla");
+      if (!DPS_RANGED_WEAPONS.includes(weapon1 as any)) setWeapon1("Sombrilla");
+      if (!DPS_RANGED_WEAPONS.includes(weapon2 as any)) setWeapon2("Sombrilla");
     } else {
-      if (!DPS_MELEE_WEAPONS.includes(weapon as any)) setWeapon("Espada estratégica");
+      if (!DPS_MELEE_WEAPONS.includes(weapon1 as any)) setWeapon1("Espada estratégica");
+      if (!DPS_MELEE_WEAPONS.includes(weapon2 as any)) setWeapon2("Espada estratégica");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dpsType]);
@@ -260,7 +316,8 @@ export default function App() {
       nick: cleanNick,
       role,
       dpsType: role === "DPS" ? dpsType : null,
-      weapon: role === "DPS" ? weapon : "—",
+      weapon1: role === "DPS" ? weapon1 : "—",
+      weapon2: role === "DPS" ? weapon2 : "—",
       level,
       active: true,
       wins: 0,
@@ -278,7 +335,8 @@ export default function App() {
     setNick("");
     setRole("DPS");
     setDpsType("MELEE");
-    setWeapon("Espada estratégica");
+    setWeapon1("Espada estratégica");
+    setWeapon2("Espada estratégica");
     setLevel("MEDIO");
   }
 
@@ -376,7 +434,9 @@ export default function App() {
     if (!matchA || !matchB) return;
 
     const fmt = (p: Player) => {
-      const dps = p.role === "DPS" ? ` (${p.dpsType === "RANGED" ? "DPS Distancia" : "DPS Melee"} - ${p.weapon})` : "";
+      const dps = p.role === "DPS"
+        ? ` (${p.dpsType === "RANGED" ? "DPS Distancia" : "DPS Melee"} - ${p.weapon1} + ${p.weapon2})`
+        : "";
       return `${p.nick} [${p.role}${dps}]`;
     };
 
@@ -435,6 +495,7 @@ export default function App() {
           --warn: #f59e0b;
           --danger: #ff6b6b;
           --radius: 16px;
+          --action: #2dd4bf;       /* teal action for Next Match */
         }
 
         .shinigami-app{
@@ -532,6 +593,30 @@ export default function App() {
           background: linear-gradient(180deg, rgba(255,107,107,0.20), rgba(255,107,107,0.08));
         }
 
+        .btn.action{
+          border-color: rgba(45,212,191,0.55);
+          background: linear-gradient(180deg, rgba(45,212,191,0.20), rgba(45,212,191,0.08));
+        }
+        .btn.action:hover{
+          box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(45,212,191,0.14);
+        }
+
+        .btn.reiatsu{
+          border-color: rgba(111,182,255,0.55);
+          background: linear-gradient(180deg, rgba(111,182,255,0.18), rgba(111,182,255,0.06));
+        }
+        .btn.reiatsu:hover{
+          box-shadow: 0 10px 35px rgba(0,0,0,0.55), 0 0 0 3px rgba(111,182,255,0.14);
+        }
+        .card-head{
+          display:flex;
+          justify-content:space-between;
+          gap:12px;
+          align-items:center;
+          flex-wrap:wrap;
+          margin-bottom: 8px;
+        }
+
         select, input{
           width: 100%;
           padding: 10px 12px;
@@ -609,6 +694,27 @@ export default function App() {
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(0,0,0,0.22);
         }
+        .queue-chip--next{
+          border-color: rgba(111,182,255,0.45);
+          box-shadow: 0 0 0 3px rgba(111,182,255,0.10), 0 12px 28px rgba(0,0,0,0.35);
+          background: linear-gradient(180deg, rgba(111,182,255,0.14), rgba(0,0,0,0.18));
+        }
+        .register-grid{
+          display: grid;
+          grid-template-columns: 2fr 0.8fr 1fr 1fr 1fr 0.8fr 0.8fr;
+          gap: 10px;
+        }
+
+        @media (max-width: 980px){
+          .match-grid{ grid-template-columns: 1fr; }
+          .vs{ display:none; }
+        }
+
+        @media (max-width: 820px){
+          .register-grid{
+            grid-template-columns: 1fr 1fr;
+          }
+        }
 
         table{ width: 100%; border-collapse: collapse; }
         thead th{
@@ -665,19 +771,21 @@ export default function App() {
       `}</style>
       <header className="row">
         <div>
-          <h1><span className="title-icon">⚔️</span> PvP 1v1 Manager <span style={{ opacity: 0.75 }}>(Mix)</span></h1>
+          <h1><span className="title-icon">⚔️</span> PvP 1v1 Manager </h1>
           <div className="subline">
             <span>Activos: <b>{activeCount}</b></span>
             <span>•</span>
             <span>Resultados: <b>{results.length}</b></span>
-            <Badge>mezcla todo</Badge>
-            <Badge>loser al final</Badge>
-            <Badge>copiar match</Badge>
+            <Badge>🟥 DPS: {stats.dps}</Badge>
+            <Badge>🟦 Tank: {stats.tank}</Badge>
+            <Badge>🟩 Healer: {stats.healer}</Badge>
+            <Badge>⚔️ Melee: {stats.melee}</Badge>
+            <Badge>🎯 Ranged: {stats.ranged}</Badge>
           </div>
         </div>
         <div className="toolbar">
-          <button className="btn ghost" onClick={exportJSON}>Export JSON</button>
-          <button className="btn ghost" onClick={importJSON}>Import JSON</button>
+          <button className="btn reiatsu" onClick={exportJSON}>Export JSON</button>
+          <button className="btn reiatsu" onClick={importJSON}>Import JSON</button>
           <button className="btn danger" onClick={resetAll}>Reset</button>
         </div>
       </header>
@@ -693,9 +801,9 @@ export default function App() {
               <option value="SMART">Smart (mezcla todo)</option>
               <option value="RANDOM">Random</option>
             </select>
-            <button className="btn primary" onClick={nextMatch} disabled={activeCount < 2}>🎲 Siguiente match</button>
+            <button className="btn action" onClick={nextMatch} disabled={activeCount < 2}>🎲 Siguiente match</button>
             <button className="btn" onClick={resetMatch} disabled={!currentMatch}>Reset match</button>
-            <button className="btn ghost" onClick={rebuildQueueFromPlayers}>Rearmar cola</button>
+            <button className="btn " onClick={rebuildQueueFromPlayers}>Rearmar cola</button>
             <button className="btn" onClick={copyMatchToClipboard} disabled={!currentMatch || !matchA || !matchB}>📋 Copiar match</button>
           </div>
           <div className="range-row" style={{ opacity: 0.9 }}>
@@ -735,7 +843,12 @@ export default function App() {
 
         {/* Current match */}
         <div className="card">
-          <h2 className="section-title">🔥 Match actual</h2>
+          <div className="card-head">
+            <h2 className="section-title">🔥 Match actual</h2>
+            <button className="btn reiatsu" onClick={copyMatchToClipboard} disabled={!currentMatch || !matchA || !matchB}>
+              📋 Copiar match
+            </button>
+          </div>
           {!currentMatch || !matchA || !matchB ? (
             <div style={{ opacity: 0.75 }}>No hay match aún. Dale a <b>Siguiente match</b>.</div>
           ) : (
@@ -748,7 +861,8 @@ export default function App() {
                     {matchA.role === "DPS" && matchA.dpsType ? (
                       <>
                         <span className="pill">{matchA.dpsType === "RANGED" ? "Distancia" : "Melee"}</span>
-                        <span className="pill">{matchA.weapon}</span>
+                        <span className="pill">{matchA.weapon1}</span>
+                        <span className="pill">{matchA.weapon2}</span>
                       </>
                     ) : null}
                     <span className="pill">Nivel: {matchA.level}</span>
@@ -768,7 +882,8 @@ export default function App() {
                     {matchB.role === "DPS" && matchB.dpsType ? (
                       <>
                         <span className="pill">{matchB.dpsType === "RANGED" ? "Distancia" : "Melee"}</span>
-                        <span className="pill">{matchB.weapon}</span>
+                        <span className="pill">{matchB.weapon1}</span>
+                        <span className="pill">{matchB.weapon2}</span>
                       </>
                     ) : null}
                     <span className="pill">Nivel: {matchB.level}</span>
@@ -789,7 +904,7 @@ export default function App() {
       {/* Add player */}
       <section className="card">
         <h2 className="section-title">➕ Registrar jugador</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.7fr 0.9fr 1fr 0.8fr 0.6fr", gap: 10 }}>
+        <div className="register-grid">
           <input
             placeholder="Nick (único)"
             value={nick}
@@ -805,9 +920,14 @@ export default function App() {
             <option value="MELEE">DPS Melee</option>
             <option value="RANGED">DPS Distancia</option>
           </select>
-          <select value={weapon} onChange={(e) => setWeapon(e.target.value as Weapon)} disabled={role !== "DPS"}>
+          <select value={weapon1} onChange={(e) => setWeapon1(e.target.value as Weapon)} disabled={role !== "DPS"}>
             {weaponOptions.map(w => (
-              <option key={w} value={w}>{w}</option>
+              <option key={`w1-${w}`} value={w}>{w}</option>
+            ))}
+          </select>
+          <select value={weapon2} onChange={(e) => setWeapon2(e.target.value as Weapon)} disabled={role !== "DPS"}>
+            {weaponOptions.map(w => (
+              <option key={`w2-${w}`} value={w}>{w}</option>
             ))}
           </select>
           <select value={level} onChange={(e) => setLevel(e.target.value as Level)}>
@@ -837,7 +957,7 @@ export default function App() {
               return (
                 <span
                   key={id}
-                  className="queue-chip"
+                  className={`queue-chip ${idx === 0 && p.active ? "queue-chip--next" : ""}`}
                   style={{
                     opacity: p.active ? 1 : 0.4,
                   }}
@@ -867,7 +987,7 @@ export default function App() {
                   <th>Nivel</th>
                   <th>Rol</th>
                   <th>Tipo DPS</th>
-                  <th>Arma</th>
+                  <th>Armas</th>
                   <th>W-L</th>
                   <th>Últimos rivales</th>
                   <th></th>
@@ -891,7 +1011,7 @@ export default function App() {
                     <td>
                       {p.role === "DPS" ? (p.dpsType === "RANGED" ? "Distancia" : "Melee") : "—"}
                     </td>
-                    <td>{p.role === "DPS" ? p.weapon : "—"}</td>
+                    <td>{p.role === "DPS" ? `${p.weapon1} + ${p.weapon2}` : "—"}</td>
                     <td>{p.wins}-{p.losses}</td>
                     <td style={{ opacity: 0.85 }}>
                       {p.lastOpponents.length
