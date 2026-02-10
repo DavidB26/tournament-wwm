@@ -678,7 +678,7 @@ export default function App() {
         {queue.length === 0 ? (
           <div style={{ opacity: 0.75 }}>Aún no hay cola.</div>
         ) : (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap"  }}>
             {queue.map((id, idx) => {
               const p = playersById.get(id);
               if (!p) return null;
