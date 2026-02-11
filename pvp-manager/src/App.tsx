@@ -430,8 +430,7 @@ export default function App() {
     return { tank, healer, dps, melee, ranged };
   }, [players]);
 
-  const matchA = currentMatch ? playersById.get(currentMatch.aId) : null;
-  const matchB = currentMatch ? playersById.get(currentMatch.bId) : null;
+  
 
   // Ajustes automáticos de arma según rol/dpsType
   useEffect(() => {
@@ -635,10 +634,7 @@ export default function App() {
     if (currentMatch?.createdAt === match.createdAt) setCurrentMatch(null);
   }
   
-  function applyResult(winnerId: string, loserId: string) {
-    if (!currentMatch) return;
-    applyResultForMatch(currentMatch, winnerId, loserId);
-  }
+
 
   function exportPlayersCSV() {
     const header = [
