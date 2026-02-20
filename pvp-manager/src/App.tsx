@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 type Role = "TANK" | "HEALER" | "DPS";
@@ -308,6 +308,10 @@ export default function App() {
     setData,
   ] = useState(() => loadState());
 
+  const tabIdRef = useRef<string>(uid());
+  const applyingRemoteRef = useRef(false);
+  const lastAppliedSyncAtRef = useRef(0);
+
   const [mode, setMode] = useState<Mode>("SMART");
   const [currentMatch, setCurrentMatch] = useState<Match | null>(
     persistedMatch ?? null
@@ -338,6 +342,10 @@ export default function App() {
 
   useEffect(() => {
     saveState(players, results, queue, currentMatch, screenMatches);
+
+    // Avoid ping-pong between tabs: if we are applying remote state, don't re-broadcast.
+    if (applyingRemoteRef.current) return;
+
     emitSync();
   }, [players, results, queue, currentMatch, screenMatches]);
 
@@ -354,6 +362,18 @@ export default function App() {
     if (!bc) return;
     const handler = (ev: MessageEvent) => {
       if (ev?.data?.type === "SYNC") {
+        const at = Number(ev?.data?.at ?? 0);
+        const source = String(ev?.data?.source ?? "");
+
+        // Ignore own broadcast
+        if (source && source === tabIdRef.current) return;
+
+        // Ignore older / duplicate sync messages
+        if (at && at <= lastAppliedSyncAtRef.current) return;
+        if (at) lastAppliedSyncAtRef.current = at;
+
+        applyingRemoteRef.current = true;
+
         const s = loadState();
         setData({
           players: s.players,
@@ -363,6 +383,11 @@ export default function App() {
           screenMatches: s.screenMatches,
         });
         setCurrentMatch(s.currentMatch ?? null);
+
+        // Clear flag in next microtask so local effects don't re-broadcast
+        queueMicrotask(() => {
+          applyingRemoteRef.current = false;
+        });
       }
     };
     bc.addEventListener("message", handler);
@@ -376,6 +401,7 @@ export default function App() {
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key !== LS_KEY) return;
+      applyingRemoteRef.current = true;
       const s = loadState();
       setData({
         players: s.players,
@@ -385,6 +411,9 @@ export default function App() {
         screenMatches: s.screenMatches,
       });
       setCurrentMatch(s.currentMatch ?? null);
+      queueMicrotask(() => {
+        applyingRemoteRef.current = false;
+      });
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -392,7 +421,8 @@ export default function App() {
 
   function emitSync() {
     try {
-      bc?.postMessage({ type: "SYNC", at: Date.now() });
+      const at = Date.now();
+      bc?.postMessage({ type: "SYNC", at, source: tabIdRef.current });
     } catch {}
   }
 
