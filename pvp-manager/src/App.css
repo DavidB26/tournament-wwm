@@ -212,6 +212,28 @@ hr{
 .fighter h3{ margin:0; font-size: 20px; font-weight: 900; }
 .meta{ margin-top: 8px; color: var(--muted); line-height: 1.5; }
 
+/* --- Click safety: prevent invisible overlays from eating clicks --- */
+.match-grid,
+.fighter{
+  position: relative;
+}
+
+/* Ensure any decorative pseudo-elements never block taps/clicks */
+.match-grid::before,
+.match-grid::after,
+.fighter::before,
+.fighter::after{
+  pointer-events: none;
+}
+
+/* Bring the winner buttons above any layers */
+.fighter button,
+.fighter .btn{
+  position: relative;
+  z-index: 5;
+}
+
+
 .pill{
   display:inline-flex;
   align-items:center;
