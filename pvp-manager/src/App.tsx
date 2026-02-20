@@ -312,6 +312,7 @@ export default function App() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(
     persistedMatch ?? null
   );
+  const [resolvingMatchAt, setResolvingMatchAt] = useState<number | null>(null);
 
   const isView = useMemo(() => {
     try {
@@ -406,6 +407,12 @@ export default function App() {
     results.forEach((r) => m.set(r.match.createdAt, r));
     return m;
   }, [results]);
+
+  useEffect(() => {
+    if (resolvingMatchAt == null) return;
+    const already = results.some((r) => r.match.createdAt === resolvingMatchAt);
+    if (already) setResolvingMatchAt(null);
+  }, [results, resolvingMatchAt]);
 
   const viewMatches = useMemo(() => {
     if (!isView) return currentMatch ? [currentMatch] : [];
@@ -593,20 +600,31 @@ export default function App() {
   }
 
   function applyResultForMatch(match: Match, winnerId: string, loserId: string) {
+    // Prevent double clicks / repeated resolves
+    if (resolvingMatchAt === match.createdAt) return;
+
+    setResolvingMatchAt(match.createdAt);
+
     const res: MatchResult = {
       match,
       winnerId,
       loserId,
       finishedAt: Date.now(),
     };
-  
-    setData(prev => {
-      const updatedPlayers = prev.players.map(p => {
+
+    setData((prev) => {
+      // If this match was already resolved (e.g., double click / multi-tab sync), do nothing
+      const alreadyResolved = prev.results.some(
+        (r) => r.match.createdAt === match.createdAt
+      );
+      if (alreadyResolved) return prev;
+
+      const updatedPlayers = prev.players.map((p) => {
         if (p.id !== winnerId && p.id !== loserId) return p;
-  
+
         const opponentId = p.id === winnerId ? loserId : winnerId;
         const newLastOpp = clampHistory([opponentId, ...p.lastOpponents], 10);
-  
+
         return {
           ...p,
           wins: p.id === winnerId ? p.wins + 1 : p.wins,
@@ -615,13 +633,17 @@ export default function App() {
           lastPlayedAt: Date.now(),
         };
       });
-  
-      const filteredQueue = prev.queue.filter(id => id !== winnerId && id !== loserId);
+
+      const filteredQueue = prev.queue.filter(
+        (id) => id !== winnerId && id !== loserId
+      );
       const newQueue = [...filteredQueue, winnerId, loserId];
-  
+
       // ✅ cuando ya hay ganador, se borra del stack (solo queda en historial)
-      const newScreenMatches = (prev.screenMatches ?? []).filter(m => m.createdAt !== match.createdAt);
-  
+      const newScreenMatches = (prev.screenMatches ?? []).filter(
+        (m) => m.createdAt !== match.createdAt
+      );
+
       return {
         ...prev,
         players: updatedPlayers,
@@ -630,7 +652,8 @@ export default function App() {
         screenMatches: newScreenMatches,
       };
     });
-  
+
+    // Close current match immediately (UI responsiveness)
     if (currentMatch?.createdAt === match.createdAt) setCurrentMatch(null);
   }
   
@@ -872,6 +895,7 @@ export default function App() {
                           <button
                             className="btn primary"
                             style={{ marginTop: 10, width: "100%" }}
+                            disabled={!!r || resolvingMatchAt === m.createdAt}
                             onClick={() => applyResultForMatch(m, a.id, b.id)}
                           >
                             🟩 Gana {a.nick}
@@ -905,6 +929,7 @@ export default function App() {
                           <button
                             className="btn primary"
                             style={{ marginTop: 10, width: "100%" }}
+                            disabled={!!r || resolvingMatchAt === m.createdAt}
                             onClick={() => applyResultForMatch(m, b.id, a.id)}
                           >
                             🟩 Gana {b.nick}
