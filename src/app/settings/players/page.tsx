@@ -94,48 +94,80 @@ export default function PlayersPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Players</h1>
-        <a className="text-sm underline opacity-80" href="/">
-          Volver
-        </a>
-      </div>
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <div className="mx-auto max-w-5xl p-6 space-y-6">
+      <header className="border-white/10 rounded-2xl p-5 bg-white/5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-semibold tracking-tight">Jugadores</h1>
+            <p className="text-sm opacity-70">Configura rol + 2 armas por player. Esto se usa automático al registrar peleas.</p>
+          </div>
+          <a className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" href="/">Volver</a>
+        </div>
 
-      <div className="border rounded-xl p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+          <div className="border-white/10 rounded-xl p-4 bg-white/5">
+            <div className="text-xs opacity-60">Total players</div>
+            <div className="text-2xl font-semibold">{players.length}</div>
+          </div>
+          <div className="border-white/10 rounded-xl p-4 bg-white/5">
+            <div className="text-xs opacity-60">Activos</div>
+            <div className="text-2xl font-semibold">{players.filter(p => p.active).length}</div>
+          </div>
+          <div className="border-white/10 rounded-xl p-4 bg-white/5">
+            <div className="text-xs opacity-60">Inactivos</div>
+            <div className="text-2xl font-semibold">{players.filter(p => !p.active).length}</div>
+          </div>
+        </div>
+      </header>
+
+      <section className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Agregar jugador</h2>
+            <p className="text-xs opacity-70">Tip: agrega a todos los que van a jugar hoy y déjalos activos.</p>
+          </div>
+        </div>
+
         <div className="flex gap-2">
           <input
-            className="flex-1 border rounded-lg p-2"
+            className="flex-1 border-white/10 rounded-xl p-3 bg-white/5"
             placeholder="Nick del jugador"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addPlayer()}
           />
-          <button className="border rounded-lg px-3 py-2 disabled:opacity-50" onClick={addPlayer} disabled={loading || !nickname.trim()}>
+          <button
+            className="border-white/10 rounded-xl px-4 py-3 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
+            onClick={addPlayer}
+            disabled={loading || !nickname.trim()}
+          >
             {loading ? "Agregando..." : "Agregar"}
           </button>
         </div>
 
         {msg && <p className="text-sm text-red-400">{msg}</p>}
-      </div>
+      </section>
 
-      <div className="border rounded-xl p-4">
+      <section className="border-white/10 rounded-2xl p-5 bg-white/5">
         <h2 className="font-semibold mb-3">Lista</h2>
 
         <div className="space-y-3">
           {players.map((p) => (
-            <div key={p.id} className="border rounded-lg p-3">
+            <div key={p.id} className="border-white/10 rounded-2xl p-4 bg-white/5">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="font-medium">{p.nickname}</div>
-                  <div className="text-xs opacity-60">{p.active ? "Activo" : "Inactivo"}</div>
+                  <div className={`inline-flex items-center text-xs px-2 py-1 rounded-full border-white/10 ${p.active ? "bg-white/10" : "opacity-60"}`}>
+                    {p.active ? "Activo" : "Inactivo"}
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="border rounded-lg px-3 py-2" onClick={() => toggleActive(p)}>
+                  <button className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" onClick={() => toggleActive(p)}>
                     {p.active ? "Desactivar" : "Activar"}
                   </button>
-                  <button className="border rounded-lg px-3 py-2" onClick={() => removePlayer(p)}>
+                  <button className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" onClick={() => removePlayer(p)}>
                     Eliminar
                   </button>
                 </div>
@@ -143,7 +175,7 @@ export default function PlayersPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
                 <select
-                  className="border rounded-lg p-2 text-sm"
+                  className="border-white/10 rounded-xl p-3 text-sm bg-white/5"
                   value={p.default_role_id ?? ""}
                   onChange={(e) =>
                     updatePlayer(p.id, {
@@ -162,7 +194,7 @@ export default function PlayersPage() {
                 </select>
 
                 <select
-                  className="border rounded-lg p-2 text-sm"
+                  className="border-white/10 rounded-xl p-3 text-sm bg-white/5"
                   value={p.weapon_1_id ?? ""}
                   onChange={(e) => updatePlayer(p.id, { weapon_1_id: e.target.value || null })}
                 >
@@ -175,7 +207,7 @@ export default function PlayersPage() {
                 </select>
 
                 <select
-                  className="border rounded-lg p-2 text-sm"
+                  className="border-white/10 rounded-xl p-3 text-sm bg-white/5"
                   value={p.weapon_2_id ?? ""}
                   onChange={(e) => updatePlayer(p.id, { weapon_2_id: e.target.value || null })}
                 >
@@ -192,6 +224,7 @@ export default function PlayersPage() {
 
           {!players.length && <p className="text-sm opacity-70">Aún no hay jugadores.</p>}
         </div>
+      </section>
       </div>
     </div>
   );

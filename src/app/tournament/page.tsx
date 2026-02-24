@@ -214,88 +214,157 @@ export default function TournamentPage() {
   const currentRoundMatches = bracket.filter((m) => m.round === round);
 
   return (
-    <div className="p-6 space-y-4">
-      <header className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Modo Torneo (1v1)</h1>
-          <p className="text-sm opacity-70">Selecciona participantes, genera emparejamientos aleatorios y avanza rondas.</p>
-        </div>
-        <a className="text-sm underline opacity-80" href="/">Volver</a>
-      </header>
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <div className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-semibold tracking-tight">Modo Torneo (1v1)</h1>
+              <p className="text-sm opacity-70">Selecciona participantes, genera emparejamientos aleatorios y avanza rondas.</p>
+            </div>
+            <a className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" href="/">Volver</a>
+          </div>
 
-      {msg && <div className="border rounded-xl p-3 text-sm">{msg}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Players activos</div>
+              <div className="text-2xl font-semibold">{players.length}</div>
+            </div>
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Seleccionados</div>
+              <div className="text-2xl font-semibold">{selected.size}</div>
+            </div>
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Ronda actual</div>
+              <div className="text-2xl font-semibold">{bracket.length ? round : "—"}</div>
+            </div>
+          </div>
+        </header>
 
-      <section className="border rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Participantes</h2>
-          <label className="text-sm flex items-center gap-2">
-            <input type="checkbox" checked={allowBye} onChange={(e) => setAllowBye(e.target.checked)} />
-            Permitir BYE
-          </label>
-        </div>
+        {msg && <div className="border-white/10 rounded-2xl p-4 text-sm bg-white/5">{msg}</div>}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {players.map((p) => (
-            <label key={p.id} className="border rounded-lg p-2 text-sm flex items-center gap-2">
-              <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
-              {p.nickname}
+        <section className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Participantes</h2>
+              <p className="text-xs opacity-70">Tip: puedes seleccionar cualquier cantidad. Si es impar, BYE hace que uno pase de ronda.</p>
+            </div>
+
+            <label className="border-white/10 rounded-xl p-3 bg-white/5 text-sm flex items-center gap-2 select-none">
+              <input type="checkbox" checked={allowBye} onChange={(e) => setAllowBye(e.target.checked)} />
+              Permitir BYE
             </label>
-          ))}
-        </div>
+          </div>
 
-        <button className="border rounded-lg px-3 py-2 text-sm" onClick={generateRound1}>
-          Generar torneo (aleatorio)
-        </button>
-      </section>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {players.map((p) => (
+              <label key={p.id} className="border-white/10 rounded-xl p-3 bg-white/5 text-sm flex items-center gap-2">
+                <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggle(p.id)} />
+                {p.nickname}
+              </label>
+            ))}
+          </div>
 
-      {!!bracket.length && (
-        <section className="border rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Ronda {round}</h2>
-            <button className="border rounded-lg px-3 py-2 text-sm disabled:opacity-50" onClick={buildNextRound} disabled={!canAdvance()}>
-              Siguiente ronda
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+              onClick={generateRound1}
+              disabled={selected.size < 2}
+              title={selected.size < 2 ? "Selecciona al menos 2" : "Generar ronda 1"}
+            >
+              Generar torneo (aleatorio)
+            </button>
+            <button
+              className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+              onClick={() => {
+                setBracket([]);
+                setRound(1);
+                setMsg(null);
+              }}
+              disabled={!bracket.length}
+              title="Limpia el bracket actual"
+            >
+              Limpiar bracket
             </button>
           </div>
-
-          <div className="space-y-3">
-            {currentRoundMatches.map((m) => {
-              const aName = playerById.get(m.a)?.nickname ?? "—";
-              const bName = m.b ? playerById.get(m.b)?.nickname ?? "—" : "BYE";
-
-              return (
-                <div key={m.id} className="border rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{aName} vs {bName}</div>
-                    <div className="text-xs opacity-60">R{m.round}</div>
-                  </div>
-
-                  {!m.b ? (
-                    <div className="text-sm opacity-70">BYE: gana automáticamente {aName} ✅</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <button className="border rounded-lg px-3 py-2 text-sm" disabled={saving} onClick={() => setResult(m.id, "A")}>
-                        Ganó {aName}
-                      </button>
-                      <button className="border rounded-lg px-3 py-2 text-sm" disabled={saving} onClick={() => setResult(m.id, "B")}>
-                        Ganó {bName}
-                      </button>
-                      <button className="border rounded-lg px-3 py-2 text-sm" disabled={saving} onClick={() => setResult(m.id, "", true)}>
-                        Cancelada
-                      </button>
-                    </div>
-                  )}
-
-                  {(m.winner || m.canceled) && (
-                    <div className="text-sm opacity-70">
-                      {m.canceled ? "⚠️ Cancelada" : `🏆 Ganó ${m.winner === "A" ? aName : bName}`}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </section>
-      )}
+
+        {!!bracket.length && (
+          <section className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Ronda {round}</h2>
+                <p className="text-xs opacity-70">Marca ganador (o cancelada). Cuando todo esté listo, avanza a la siguiente ronda.</p>
+              </div>
+
+              <button
+                className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                onClick={buildNextRound}
+                disabled={!canAdvance()}
+              >
+                Siguiente ronda
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {currentRoundMatches.map((m) => {
+                const aName = playerById.get(m.a)?.nickname ?? "—";
+                const bName = m.b ? playerById.get(m.b)?.nickname ?? "—" : "BYE";
+
+                return (
+                  <div key={m.id} className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="font-semibold">{aName} <span className="opacity-60">vs</span> {bName}</div>
+                        <div className="text-xs opacity-60">R{m.round}</div>
+                      </div>
+                      <div className="text-xs opacity-60">{m.canceled ? "canceled" : m.winner ? "done" : "pending"}</div>
+                    </div>
+
+                    {!m.b ? (
+                      <div className="text-sm opacity-70">BYE: gana automáticamente <b>{aName}</b> ✅</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                          disabled={saving}
+                          onClick={() => setResult(m.id, "A")}
+                        >
+                          Ganó {aName}
+                        </button>
+                        <button
+                          className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                          disabled={saving}
+                          onClick={() => setResult(m.id, "B")}
+                        >
+                          Ganó {bName}
+                        </button>
+                        <button
+                          className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 disabled:opacity-50"
+                          disabled={saving}
+                          onClick={() => setResult(m.id, "", true)}
+                        >
+                          Cancelada
+                        </button>
+                      </div>
+                    )}
+
+                    {(m.winner || m.canceled) && (
+                      <div className="text-sm opacity-70">
+                        {m.canceled ? "⚠️ Cancelada" : `🏆 Ganó ${m.winner === "A" ? aName : bName}`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        <footer className="text-xs opacity-50 pb-6">
+          Tip: si seleccionas cantidad impar, BYE hace que uno avance sin pelea.
+        </footer>
+      </div>
     </div>
   );
 }

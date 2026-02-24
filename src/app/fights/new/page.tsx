@@ -98,7 +98,6 @@ export default function NewFightPage() {
 
         setRecentPairKeys(Array.from(new Set(keys)));
       } catch {
-        // If this fails, we just don't block repeats.
         setRecentPairKeys([]);
       }
     })();
@@ -140,7 +139,6 @@ export default function NewFightPage() {
     return a;
   };
 
-  // Auto-fill: completes partially filled rows and creates up to 4 matches.
   const autoFill = () => {
     setMsg(null);
 
@@ -150,7 +148,6 @@ export default function NewFightPage() {
     }
 
     setMatches((prev) => {
-      // Build a pool excluding currently used ids (based on latest prev)
       const used = new Set<string>();
       prev.forEach((m) => {
         if (m.a) used.add(m.a);
@@ -160,20 +157,16 @@ export default function NewFightPage() {
       const available = players.map((p) => p.id).filter((id) => !used.has(id));
 
       if (available.length < 2) {
-        // keep previous state, but show message
         setMsg("No hay suficientes jugadores disponibles para completar las peleas.");
         return prev;
       }
 
       const pool = shuffle(available);
-
       const next = [...prev];
 
-      // Ensure 4 rows exist
       while (next.length < 4) next.push({ a: "", b: "", winner: "", canceled: false, notes: "" });
       next.splice(4);
 
-      // Track picks made during this auto-fill to avoid repetition
       const usedNow = new Set<string>();
       const pairsNow = new Set<string>();
 
@@ -189,19 +182,16 @@ export default function NewFightPage() {
       };
 
       const takeOpponentAvoidingRepeat = (fixedId: string) => {
-        // Try to find an opponent in pool that does not repeat an existing matchup
         for (let i = pool.length - 1; i >= 0; i--) {
           const candidate = pool[i];
           const key = pairKey(fixedId, candidate);
           if (!recentPairsSet.has(key) && !pairsNow.has(key)) {
-            // remove candidate from pool
             pool.splice(i, 1);
             usedNow.add(candidate);
             pairsNow.add(key);
             return candidate;
           }
         }
-        // Fallback: any opponent
         return takeOne();
       };
 
@@ -228,7 +218,6 @@ export default function NewFightPage() {
           continue;
         }
 
-        // neither A nor B
         const a = takeOne();
         if (!a) break;
         const b = takeOpponentAvoidingRepeat(a);
@@ -245,7 +234,9 @@ export default function NewFightPage() {
     setMatches((prev) => prev.map((m, i) => (i === idx ? { ...m, ...patch } : m)));
 
   const addMatch = () =>
-    setMatches((prev) => (prev.length >= 4 ? prev : [...prev, { a: "", b: "", winner: "", canceled: false, notes: "" }]));
+    setMatches((prev) =>
+      prev.length >= 4 ? prev : [...prev, { a: "", b: "", winner: "", canceled: false, notes: "" }]
+    );
 
   const removeMatch = (idx: number) => setMatches((prev) => prev.filter((_, i) => i !== idx));
 
@@ -256,7 +247,8 @@ export default function NewFightPage() {
       if ((m.a && !m.b) || (!m.a && m.b)) return `En la pelea #${i + 1} falta seleccionar un jugador.`;
       if (m.a && m.b && m.a === m.b) return `En la pelea #${i + 1} Player A y Player B no pueden ser el mismo.`;
       if (m.canceled && m.winner) return `En la pelea #${i + 1}, si está cancelada no debe tener ganador.`;
-      if (!m.canceled && m.a && m.b && !m.winner) return `En la pelea #${i + 1} debes seleccionar un ganador (A o B) o marcarla como cancelada.`;
+      if (!m.canceled && m.a && m.b && !m.winner)
+        return `En la pelea #${i + 1} debes seleccionar un ganador (A o B) o marcarla como cancelada.`;
     }
     return null;
   };
@@ -330,145 +322,197 @@ export default function NewFightPage() {
   };
 
   return (
-    <div className="p-6 space-y-4">
-      <header className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Registrar peleas (1v1)</h1>
-          <p className="text-sm opacity-70">Hasta 4 peleas de una. Armas/rol salen del perfil del jugador.</p>
-        </div>
-        <a className="text-sm underline opacity-80" href="/">
-          Volver
-        </a>
-      </header>
-
-      {msg && <div className="border rounded-xl p-3 text-sm">{msg}</div>}
-
-      <section className="border rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold">Peleas</h2>
-            <div className="text-xs opacity-60">Players cargados: {players.length}</div>
-            <div className="text-xs opacity-60">Emparejamientos bloqueados hoy: {recentPairKeys.length}</div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              className="border rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-              type="button"
-              onClick={addMatch}
-              disabled={matches.length >= 4}
-            >
-              + Agregar pelea
-            </button>
-            <button
-              className="border rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-              type="button"
-              onClick={autoFill}
-              disabled={players.length < 2}
-              title={players.length < 2 ? "Carga players primero" : "Autogenera peleas aleatorias"}
-            >
-              Auto (aleatorio)
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {matches.map((m, idx) => (
-            <div key={idx} className="border rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="font-medium">Pelea #{idx + 1}</div>
-                {matches.length > 1 && (
-                  <button className="border rounded-lg px-3 py-2 text-sm" type="button" onClick={() => removeMatch(idx)}>
-                    Quitar
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-sm opacity-80">Player A</label>
-                  <select className="w-full border rounded-lg p-2" value={m.a} onChange={(e) => setMatch(idx, { a: e.target.value })}>
-                    <option value="">Seleccionar...</option>
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id} disabled={isUsedElsewhere(p.id, idx, "a")}>
-                        {p.nickname}
-                      </option>
-                    ))}
-                  </select>
-                  {m.a && <PlayerSummary id={m.a} />}
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-sm opacity-80">Player B</label>
-                  <select className="w-full border rounded-lg p-2" value={m.b} onChange={(e) => setMatch(idx, { b: e.target.value })}>
-                    <option value="">Seleccionar...</option>
-                    {players.map((p) => (
-                      <option key={p.id} value={p.id} disabled={isUsedElsewhere(p.id, idx, "b")}>
-                        {p.nickname}
-                      </option>
-                    ))}
-                  </select>
-                  {m.b && <PlayerSummary id={m.b} />}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 items-center">
-                <label className="border rounded-lg px-3 py-2 text-sm flex items-center gap-2 select-none">
-                  <input
-                    type="checkbox"
-                    checked={m.canceled}
-                    onChange={(e) => setMatch(idx, { canceled: e.target.checked, winner: e.target.checked ? "" : m.winner })}
-                  />
-                  Cancelada
-                </label>
-
-                <button
-                  className={`border rounded-lg px-3 py-2 text-sm ${m.winner === "A" ? "bg-white/10" : ""}`}
-                  type="button"
-                  onClick={() => !m.canceled && setMatch(idx, { winner: "A" })}
-                  disabled={m.canceled}
-                >
-                  Ganó A
-                </button>
-                <button
-                  className={`border rounded-lg px-3 py-2 text-sm ${m.winner === "B" ? "bg-white/10" : ""}`}
-                  type="button"
-                  onClick={() => !m.canceled && setMatch(idx, { winner: "B" })}
-                  disabled={m.canceled}
-                >
-                  Ganó B
-                </button>
-                <button
-                  className={`border rounded-lg px-3 py-2 text-sm ${m.winner === "" ? "bg-white/10" : ""}`}
-                  type="button"
-                  onClick={() => !m.canceled && setMatch(idx, { winner: "" })}
-                  disabled={m.canceled}
-                >
-                  Sin ganador
-                </button>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm opacity-80">Notas (opcional)</label>
-                <input
-                  className="w-full border rounded-lg p-2"
-                  value={m.notes}
-                  onChange={(e) => setMatch(idx, { notes: e.target.value })}
-                  placeholder="Ej: lag, DC, cancelada, etc."
-                />
-              </div>
+    <div className="min-h-screen bg-zinc-950 text-white">
+      <div className="mx-auto max-w-5xl p-6 space-y-6">
+        <header className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="text-3xl font-semibold tracking-tight">Registrar peleas (1v1)</h1>
+              <p className="text-sm opacity-70">Hasta 4 peleas de una. Armas/rol salen del perfil del jugador.</p>
             </div>
-          ))}
+            <a className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" href="/">
+              Volver
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Players cargados</div>
+              <div className="text-2xl font-semibold">{players.length}</div>
+            </div>
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Bloqueados hoy</div>
+              <div className="text-2xl font-semibold">{recentPairKeys.length}</div>
+            </div>
+            <div className="border-white/10 rounded-xl p-4 bg-white/5">
+              <div className="text-xs opacity-60">Filas activas</div>
+              <div className="text-2xl font-semibold">{matches.length}</div>
+            </div>
+          </div>
+        </header>
+
+        {msg && <div className="border-white/10 rounded-2xl p-4 text-sm bg-white/5">{msg}</div>}
+
+        <section className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Peleas</h2>
+              <div className="text-xs opacity-70">Completa A vs B, marca ganador o cancelada. Auto evita duplicados.</div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                className="border-white/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
+                type="button"
+                onClick={addMatch}
+                disabled={matches.length >= 4}
+              >
+                + Agregar pelea
+              </button>
+
+              <button
+                className="border-white/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
+                type="button"
+                onClick={autoFill}
+                disabled={players.length < 2}
+                title={players.length < 2 ? "Carga players primero" : "Autogenera peleas aleatorias"}
+              >
+                Auto (aleatorio)
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {matches.map((m, idx) => (
+              <div key={idx} className="border-white/10 rounded-2xl p-5 bg-white/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">Pelea #{idx + 1}</div>
+                  {matches.length > 1 && (
+                    <button
+                      className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10"
+                      type="button"
+                      onClick={() => removeMatch(idx)}
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-sm opacity-80">Player A</label>
+                    <select
+                      className="w-full border-white/10 rounded-xl p-3 bg-white/5"
+                      value={m.a}
+                      onChange={(e) => setMatch(idx, { a: e.target.value })}
+                    >
+                      <option value="">Seleccionar...</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id} disabled={isUsedElsewhere(p.id, idx, "a")}>
+                          {p.nickname}
+                        </option>
+                      ))}
+                    </select>
+                    {m.a && <PlayerSummary id={m.a} />}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-sm opacity-80">Player B</label>
+                    <select
+                      className="w-full border-white/10 rounded-xl p-3 bg-white/5"
+                      value={m.b}
+                      onChange={(e) => setMatch(idx, { b: e.target.value })}
+                    >
+                      <option value="">Seleccionar...</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id} disabled={isUsedElsewhere(p.id, idx, "b")}>
+                          {p.nickname}
+                        </option>
+                      ))}
+                    </select>
+                    {m.b && <PlayerSummary id={m.b} />}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 items-center">
+                  <label className="border-white/10 rounded-xl px-4 py-2 text-sm flex items-center gap-2 select-none bg-white/5">
+                    <input
+                      type="checkbox"
+                      checked={m.canceled}
+                      onChange={(e) =>
+                        setMatch(idx, { canceled: e.target.checked, winner: e.target.checked ? "" : m.winner })
+                      }
+                    />
+                    Cancelada
+                  </label>
+
+                  <button
+                    className={`border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 ${
+                      m.winner === "A" ? "bg-white/10" : ""
+                    }`}
+                    type="button"
+                    onClick={() => !m.canceled && setMatch(idx, { winner: "A" })}
+                    disabled={m.canceled}
+                  >
+                    Ganó A
+                  </button>
+
+                  <button
+                    className={`border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 ${
+                      m.winner === "B" ? "bg-white/10" : ""
+                    }`}
+                    type="button"
+                    onClick={() => !m.canceled && setMatch(idx, { winner: "B" })}
+                    disabled={m.canceled}
+                  >
+                    Ganó B
+                  </button>
+
+                  <button
+                    className={`border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10 ${
+                      m.winner === "" ? "bg-white/10" : ""
+                    }`}
+                    type="button"
+                    onClick={() => !m.canceled && setMatch(idx, { winner: "" })}
+                    disabled={m.canceled}
+                  >
+                    Sin ganador
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm opacity-80">Notas (opcional)</label>
+                  <input
+                    className="w-full border-white/10 rounded-xl p-3 bg-white/5"
+                    value={m.notes}
+                    onChange={(e) => setMatch(idx, { notes: e.target.value })}
+                    placeholder="Ej: lag, DC, cancelada, etc."
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div className="flex items-center justify-end gap-2">
+          <button
+            className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10"
+            type="button"
+            onClick={() => setMatches([{ a: "", b: "", winner: "", canceled: false, notes: "" }])}
+            disabled={saving}
+          >
+            Limpiar
+          </button>
+
+          <button
+            className="border-white/10 rounded-xl px-5 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
+            type="button"
+            onClick={saveAll}
+            disabled={saving}
+          >
+            {saving ? "Guardando..." : "Guardar peleas"}
+          </button>
         </div>
-      </section>
-
-      <div className="flex items-center justify-end gap-2">
-        <button className="border rounded-lg px-3 py-2 text-sm" type="button" onClick={() => setMatches([{ a: "", b: "", winner: "", canceled: false, notes: "" }])} disabled={saving}>
-          Limpiar
-        </button>
-
-        <button className="border rounded-lg px-4 py-2 text-sm disabled:opacity-50" type="button" onClick={saveAll} disabled={saving}>
-          {saving ? "Guardando..." : "Guardar peleas"}
-        </button>
       </div>
     </div>
   );
