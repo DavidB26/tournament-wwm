@@ -31,29 +31,69 @@ export default function NewFightPage() {
     { a: "", b: "", winner: "", canceled: false, notes: "" },
   ]);
   const [saving, setSaving] = useState(false);
+  const [savingRow, setSavingRow] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [recentPairKeys, setRecentPairKeys] = useState<string[]>([]);
 
+  const DRAFT_KEY = "wwm_fights_new_draft_v1";
+  const loadPlayers = async () => {
+    const { data, error } = await supabase
+      .from("players")
+      .select("id,nickname,active,default_role_id,weapon_1_id,weapon_2_id")
+      .eq("active", true)
+      .order("nickname");
+
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    setPlayers((data ?? []) as Player[]);
+  };
+
+  const restoreDraft = () => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      // Basic shape check
+      const cleaned: MatchRow[] = parsed
+        .filter((x: any) => x && typeof x === "object")
+        .map((x: any) => ({
+          a: typeof x.a === "string" ? x.a : "",
+          b: typeof x.b === "string" ? x.b : "",
+          winner: x.winner === "A" || x.winner === "B" ? x.winner : "",
+          canceled: !!x.canceled,
+          notes: typeof x.notes === "string" ? x.notes : "",
+        }));
+
+      if (cleaned.length) setMatches(cleaned);
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     (async () => {
-      const [{ data: p, error: pErr }, { data: r, error: rErr }, { data: w, error: wErr }] =
-        await Promise.all([
-          supabase
-            .from("players")
-            .select("id,nickname,active,default_role_id,weapon_1_id,weapon_2_id")
-            .eq("active", true)
-            .order("nickname"),
-          supabase.from("roles").select("id,name").order("name"),
-          supabase.from("weapons").select("id,name").order("name"),
-        ]);
+      // restore draft first (so UI doesn't flash empty)
+      restoreDraft();
 
-      if (pErr || rErr || wErr) {
-        setMsg(pErr?.message || rErr?.message || wErr?.message || "Error cargando data");
+      const [{ data: r, error: rErr }, { data: w, error: wErr }] = await Promise.all([
+        supabase.from("roles").select("id,name").order("name"),
+        supabase.from("weapons").select("id,name").order("name"),
+      ]);
+
+      if (rErr || wErr) {
+        setMsg(rErr?.message || wErr?.message || "Error cargando data");
       }
 
-      setPlayers((p ?? []) as Player[]);
       setRoles((r ?? []) as Role[]);
       setWeapons((w ?? []) as Weapon[]);
+
+      // load players (active) separately so we can refresh it later
+      await loadPlayers();
 
       // Load today's pairings to avoid repeating the same matchups in Auto
       try {
@@ -102,6 +142,14 @@ export default function NewFightPage() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(matches));
+    } catch {
+      // ignore
+    }
+  }, [matches]);
 
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const roleById = useMemo(() => new Map(roles.map((r) => [r.id, r.name])), [roles]);
@@ -253,6 +301,21 @@ export default function NewFightPage() {
     return null;
   };
 
+  const validateRow = (m: MatchRow, idx: number) => {
+    if (!m.a || !m.b) return `En la pelea #${idx + 1} falta seleccionar Player A y Player B.`;
+    if (m.a === m.b) return `En la pelea #${idx + 1} Player A y Player B no pueden ser el mismo.`;
+    if (m.canceled && m.winner) return `En la pelea #${idx + 1}, si está cancelada no debe tener ganador.`;
+    if (!m.canceled && !m.winner) return `En la pelea #${idx + 1} debes seleccionar un ganador (A o B) o marcarla como cancelada.`;
+    return null;
+  };
+
+  const canSaveRow = (m: MatchRow) => {
+    if (!m.a || !m.b) return false;
+    if (m.a === m.b) return false;
+    if (m.canceled) return m.winner === "";
+    return m.winner === "A" || m.winner === "B";
+  };
+
   const PlayerSummary = ({ id }: { id: string }) => {
     const p = playerById.get(id);
     if (!p) return null;
@@ -264,6 +327,74 @@ export default function NewFightPage() {
         Rol: {role} · Arma 1: {w1} · Arma 2: {w2}
       </div>
     );
+  };
+
+  const saveOne = async (idx: number) => {
+    setMsg(null);
+    const m = matches[idx];
+    if (!m) return;
+
+    const rowErr = validateRow(m, idx);
+    if (rowErr) {
+      setMsg(rowErr);
+      return;
+    }
+
+    setSavingRow(idx);
+
+    const fightPayload = {
+      status: m.canceled ? "canceled" : "completed",
+      notes: (m.notes || "").trim() || null,
+      winner_team: m.canceled ? null : (m.winner || null),
+    } as any;
+
+    const { data: inserted, error: fErr } = await supabase.from("fights").insert(fightPayload).select("id").single();
+    if (fErr || !inserted?.id) {
+      setSavingRow(null);
+      setMsg(fErr?.message ?? "Error creando pelea");
+      return;
+    }
+
+    const aPlayer = playerById.get(m.a);
+    const bPlayer = playerById.get(m.b);
+
+    const participants: any[] = [
+      {
+        fight_id: inserted.id,
+        player_id: m.a,
+        team: "A",
+        role_id: aPlayer?.default_role_id ?? null,
+        weapon_1_id: aPlayer?.weapon_1_id ?? null,
+        weapon_2_id: aPlayer?.weapon_2_id ?? null,
+        absent: false,
+      },
+      {
+        fight_id: inserted.id,
+        player_id: m.b,
+        team: "B",
+        role_id: bPlayer?.default_role_id ?? null,
+        weapon_1_id: bPlayer?.weapon_1_id ?? null,
+        weapon_2_id: bPlayer?.weapon_2_id ?? null,
+        absent: false,
+      },
+    ];
+
+    const { error: pErr } = await supabase.from("fight_participants").insert(participants);
+    if (pErr) {
+      setSavingRow(null);
+      setMsg(pErr.message);
+      return;
+    }
+
+    // Clear only this row (keep the other rows intact)
+    setMatches((prev) =>
+      prev.map((row, i) =>
+        i === idx ? { a: "", b: "", winner: "", canceled: false, notes: "" } : row
+      )
+    );
+
+    setSavingRow(null);
+    alert("Pelea guardada ✅");
   };
 
   const saveAll = async () => {
@@ -317,6 +448,7 @@ export default function NewFightPage() {
     setSaving(false);
     if (pErr) return setMsg(pErr.message);
 
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
     alert("Peleas registradas ✅");
     setMatches([{ a: "", b: "", winner: "", canceled: false, notes: "" }]);
   };
@@ -330,9 +462,19 @@ export default function NewFightPage() {
               <h1 className="text-3xl font-semibold tracking-tight">Registrar peleas (1v1)</h1>
               <p className="text-sm opacity-70">Hasta 4 peleas de una. Armas/rol salen del perfil del jugador.</p>
             </div>
-            <a className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" href="/">
-              Volver
-            </a>
+            <div className="flex gap-2">
+              <button
+                className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10"
+                type="button"
+                onClick={loadPlayers}
+                title="Recargar players activos"
+              >
+                Refrescar players
+              </button>
+              <a className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10" href="/">
+                Volver
+              </a>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -374,7 +516,7 @@ export default function NewFightPage() {
                 className="border-white/10 rounded-xl px-4 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
                 type="button"
                 onClick={autoFill}
-                disabled={players.length < 2}
+                disabled={players.length < 2 || savingRow !== null || saving}
                 title={players.length < 2 ? "Carga players primero" : "Autogenera peleas aleatorias"}
               >
                 Auto (aleatorio)
@@ -489,6 +631,17 @@ export default function NewFightPage() {
                     placeholder="Ej: lag, DC, cancelada, etc."
                   />
                 </div>
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    className="border-white/10 rounded-xl px-5 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
+                    type="button"
+                    onClick={() => saveOne(idx)}
+                    disabled={!canSaveRow(m) || saving || savingRow !== null}
+                    title={!canSaveRow(m) ? "Completa A vs B y ganador (o cancelada)" : "Guardar solo esta pelea"}
+                  >
+                    {savingRow === idx ? "Guardando..." : "Guardar esta pelea"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -498,8 +651,11 @@ export default function NewFightPage() {
           <button
             className="border-white/10 rounded-xl px-4 py-2 text-sm bg-white/5 hover:bg-white/10"
             type="button"
-            onClick={() => setMatches([{ a: "", b: "", winner: "", canceled: false, notes: "" }])}
-            disabled={saving}
+            onClick={() => {
+              try { localStorage.removeItem(DRAFT_KEY); } catch {}
+              setMatches([{ a: "", b: "", winner: "", canceled: false, notes: "" }]);
+            }}
+            disabled={saving || savingRow !== null}
           >
             Limpiar
           </button>
@@ -508,7 +664,7 @@ export default function NewFightPage() {
             className="border-white/10 rounded-xl px-5 py-2 text-sm disabled:opacity-50 bg-white/5 hover:bg-white/10"
             type="button"
             onClick={saveAll}
-            disabled={saving}
+            disabled={saving || savingRow !== null}
           >
             {saving ? "Guardando..." : "Guardar peleas"}
           </button>

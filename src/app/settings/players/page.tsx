@@ -23,6 +23,8 @@ export default function PlayersPage() {
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [view, setView] = useState<"all" | "active" | "inactive">("all");
+  const [search, setSearch] = useState("");
 
   const load = async () => {
     const { data, error } = await supabase
@@ -51,6 +53,20 @@ export default function PlayersPage() {
     roles.forEach((r) => map.set(r.id, r.name.toLowerCase()));
     return map;
   }, [roles]);
+
+  const playersToShow = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return players
+      .filter((p) => {
+        if (view === "active") return p.active;
+        if (view === "inactive") return !p.active;
+        return true;
+      })
+      .filter((p) => {
+        if (!s) return true;
+        return p.nickname.toLowerCase().includes(s);
+      });
+  }, [players, view, search]);
 
   const weaponsForRole = (role_id: string | null) => {
     if (!role_id) return weapons;
@@ -150,10 +166,36 @@ export default function PlayersPage() {
       </section>
 
       <section className="border-white/10 rounded-2xl p-5 bg-white/5">
-        <h2 className="font-semibold mb-3">Lista</h2>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+          <div>
+            <h2 className="font-semibold">Lista</h2>
+            <p className="text-xs opacity-70">Filtra para ver quiénes están activos o inactivos.</p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              className="border-white/10 rounded-xl p-3 text-sm bg-white/5"
+              placeholder="Buscar nick..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <select
+              className="border-white/10 rounded-xl p-3 text-sm bg-white/5"
+              value={view}
+              onChange={(e) => setView(e.target.value as any)}
+            >
+              <option value="all">Todos</option>
+              <option value="active">Activos</option>
+              <option value="inactive">Inactivos</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="text-xs opacity-60 mb-3">Mostrando {playersToShow.length} de {players.length}</div>
 
         <div className="space-y-3">
-          {players.map((p) => (
+          {playersToShow.map((p) => (
             <div key={p.id} className="border-white/10 rounded-2xl p-4 bg-white/5">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -222,7 +264,11 @@ export default function PlayersPage() {
             </div>
           ))}
 
-          {!players.length && <p className="text-sm opacity-70">Aún no hay jugadores.</p>}
+          {!playersToShow.length && (
+            <p className="text-sm opacity-70">
+              {players.length === 0 ? "Aún no hay jugadores." : "No hay resultados con esos filtros."}
+            </p>
+          )}
         </div>
       </section>
       </div>
